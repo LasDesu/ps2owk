@@ -3,6 +3,8 @@
 .message "Compiling ATmega328P based development kit version"
 .include "m328Pdef.inc"
 
+.equ	sys_freq	= 8000000
+
 .equ	KBD_PORT	= PORTB
 .equ	KBD_DDR		= DDRB
 .equ	KBD_PIN		= PINB0
@@ -20,6 +22,8 @@
 
 .message "Compiling ATtiny13 based final device version"
 .include "tn13def.inc"
+
+.equ	sys_freq	= 9600000
 
 .equ	KBD_PORT	= PORTB
 .equ	KBD_DDR		= DDRB
@@ -60,8 +64,6 @@
 .def	ps2_tmp2 = r17
 .def	ps2_accum = r18
 .def	ps2_cksum = r19
-
-.equ	sys_freq	= 8000000
 
 .equ	kbd_clk		= 20800
 .equ	prescale	= 8
@@ -381,7 +383,7 @@ process_ps2:
 		rjmp	scan_pref_e0
 		
 		ldi		tmp, KEY_F7
-		cpi		ps2_accum, 0xB8	; F7
+		cpi		ps2_accum, 0x83	; F7
 		breq	process_key88
 		
 		cpi		ps2_accum, 0x80
