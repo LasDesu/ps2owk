@@ -6,4 +6,4 @@ Currently supported:
 - PC-8801MA (type C keyboard, I guess)
 - FM-77AV
 
-Orignal project page: http://zxdesu.byethost32.com/2018/02/13/pc-8801-keyboard-adapter/
+Original project page: http://zxdesu.byethost32.com/2018/02/13/pc-8801-keyboard-adapter/
