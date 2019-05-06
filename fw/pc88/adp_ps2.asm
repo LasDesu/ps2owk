@@ -74,14 +74,14 @@
 .CSEG ; ROM
 	.org 0
 		rjmp	reset
-	
+
 	.org OC0Aaddr
 		rjmp	uart_next
 
 ;	.org INT_VECTORS_SIZE
 reset:
 		cli
-		
+
 		; set stack
 	.ifdef SPH
 		ldi		tmp, high(RAMEND)
@@ -89,7 +89,7 @@ reset:
 	.endif
 		ldi		tmp, low(RAMEND)
 		out		SPL, tmp
-		
+
 		; set I/O
 	.ifdef DEVKIT
 		ldi		tmp, (0 << LED_PIN) | (0 << PS_Data) | (0 << PS_Clock)
@@ -106,7 +106,7 @@ reset:
 		ldi		tmp, (1 << KBD_PIN) | (1 << LED_PIN) | (0 << PS_Data) | (0 << PS_Clock)
 		out		DDRB, tmp
 	.endif
-		
+
 		; setup keyboard timer period
 		ldi		tmp, kbd_div
 		out		OCR0A, tmp
@@ -123,11 +123,11 @@ reset:
 	.else
 		sts		TIMSK0, tmp
 	.endif
-		
+
 		; fill keyboard buffer
 		ldi		ZH, high(kbd_buf)
 		ldi		ZL, low(kbd_buf)
-		
+
 		ser		tmp
 		ldi		tmph, 0xE
 fill_buf:
@@ -136,7 +136,7 @@ fill_buf:
 		brne	fill_buf
 		ldi		tmp, 0x7F
 		st		Z, tmp
-		
+
 		; set variables
 		clr		m_flags
 		clr		m_timer_l
@@ -156,20 +156,23 @@ fill_buf:
 ;		ldi		ps2_accum, 0x3A
 ;		rcall	process_ps2
 		; debug
-		
+
 		rcall	reset_ps2
 
 main_loop:
+		sbi		LED_PORT, LED_PIN
+
+packet_loop:
 		; wait for data and process it
 		rcall	get_ps2_new
 		brcs	main_loop
-		
+
 		cbi		LED_PORT, LED_PIN
 		rcall	process_ps2
-		
+
 		; repeat
-		rjmp	main_loop
-		
+		rjmp	packet_loop
+
 uart_next:
 		in		s_store, SREG
 		push	tmp
@@ -179,12 +182,12 @@ uart_next:
 		in		tmp, KBD_PORT
 		bld		tmp, KBD_PIN
 		out		KBD_PORT, tmp
-		
+
 		; shift bits
 		sec
 		ror		uart_val1
 		ror		uart_val0
-		
+
 		; process timer
 		adiw	m_timer_l, 1
 		brne	_leave_uart
@@ -194,7 +197,7 @@ uart_next:
 _leave_uart:
 		pop		tmp
 		out		SREG, s_store
-		
+
 		reti
 
 ; =============== S U B R O U T I N E =======================================
@@ -243,27 +246,27 @@ loop_5us_2:
 timeout_2ms:
 		; 42 - FFD6
 		ldi		tmp, 0xD6
-		ldi		tmph, 0xFF 
+		ldi		tmph, 0xFF
 		rjmp	set_timer
 
 timeout_4ms:
 		; 83 - FFAD
 		ldi		tmp, 0xAD
-		ldi		tmph, 0xFF 
+		ldi		tmph, 0xFF
 		rjmp	set_timer
 
 timeout_30ms:
 		; 624 - FD90
 		ldi		tmp, 0x90
-		ldi		tmph, 0xFD 
+		ldi		tmph, 0xFD
 		rjmp	set_timer
 
 timeout_40ms:
 		; 832 - FCC0
 		ldi		tmp, 0xC0
-		ldi		tmph, 0xFC 
+		ldi		tmph, 0xFC
 		rjmp	set_timer
-		
+
 timeout_max:
 		; 00 - 256
 		clr		tmp
@@ -280,7 +283,7 @@ set_timer:
 
 key_event:
 		mov		m_tmp, tmp
-		
+
 		; get row address
 		mov		tmp, m_tmp
 		swap	tmp
@@ -290,33 +293,33 @@ key_event:
 		add		ZL, tmp
 		clr		tmp
 		adc		ZL, tmp
-		
+
 		; get bit mask
 		mov		tmp, m_tmp
 		andi	tmp, 7
 		inc		tmp
-		
+
 		clr		tmph
 		sec
 get_mask:
 		rol		tmph
 		dec		tmp
 		brne	get_mask
-		
+
 		; load current state
 		ld		tmp, Z
 
 		; make or break key
 		sbrs	m_tmp, 3
 		rjmp	key_make
-		
+
 		or		tmp, tmph
 		rjmp	store_keys
 
 key_make:
 		com		tmph
 		and		tmp, tmph
-		
+
 store_keys:
 		; save new state
 		st		Z, tmp
@@ -328,14 +331,14 @@ send_row_data:
 		swap	tmph
 		andi	tmph, 0xF
 		mov		m_tmp, tmph
-		
+
 		; mask
 		swap	tmp
 		mov		tmph, tmp
 		andi	tmph, 0x0F
 		andi	tmp, 0xF0
 		or		tmp, m_tmp
-		
+
 		; calculate parity
 		clr 	m_tmp
 		ldi		tmp2, 16
@@ -348,20 +351,20 @@ calc_parity:
 parity_zero:
 		dec		tmp2
 		brne	calc_parity
-		; put last bit back 
+		; put last bit back
 		ror		tmph
 		ror		tmp
-		
+
 		;com		m_tmp	; for odd
 		bst		m_tmp, 0
 		bld		tmph, 12-8
-		
+
 		; make start/stop bits
 		clc
 		rol		tmp
 		rol		tmph
 		ori		tmph, 0xC0
-		
+
 		; set buffer
 		cli
 		mov		uart_val0, tmp
@@ -378,14 +381,14 @@ process_ps2:
 
 		cpi		ps2_accum, 0xE0
 		breq	scan_ext
-		
+
 		sbrc	m_flags, KBDF_EXT
 		rjmp	scan_pref_e0
-		
+
 		ldi		tmp, KEY_F7
 		cpi		ps2_accum, 0x83	; F7
 		breq	process_key88
-		
+
 		cpi		ps2_accum, 0x80
 		brsh	scan_done
 
@@ -397,7 +400,7 @@ process_ps2:
 scan_pref_e0:
 		cpi		ps2_accum, 0x68
 		brlo	scan_pref_e0_extra
-		
+
 		cpi		ps2_accum, 0x80
 		brsh	scan_done
 
@@ -411,25 +414,25 @@ scan_pref_e0_extra:
 		ldi		tmp, KEY_RRETURN
 		cpi		ps2_accum, 0x5A	; kp enter
 		breq	process_key88
-		
+
 		ldi		tmp, KEY_KP_DIV
 		cpi		ps2_accum, 0x4A	; kp /
 		breq	process_key88
-		
+
 		ldi		tmp, KEY_GRPH
 		cpi		ps2_accum, 0x11	; ralt
 		breq	process_key88
-		
+
 		ldi		tmp, KEY_ZENKAKU
 		cpi		ps2_accum, 0x14	; rctrl
 		breq	process_key88
-		
+
 		ldi		tmp, KEY_PC
 		cpi		ps2_accum, 0x12	; printscreen
 		breq	process_key88
-		
+
 		rjmp	scan_done
-		
+
 scan_ext:
 		; mark next scancode as extended
 		ldi		tmp, (1 << KBDF_EXT)
@@ -446,7 +449,6 @@ scan_done:
 		; clear flags
 		ldi		tmp, ~((1 << KBDF_BREAK) | (1 << KBDF_EXT))
 		and		m_flags, tmp
-		sbi		LED_PORT, LED_PIN
 		ret
 
 get_keycode:
@@ -462,14 +464,14 @@ get_keycode:
 		rcall	key_event
 		rcall	timeout_2ms
 .endm
-	
+
 .macro send_paused
 _wait_pre_pause:
 		sbrs	m_flags, TMRF_OVF
 		rjmp	_wait_pre_pause
-		
+
 		send_corrected
-		
+
 _wait_post_pause:
 		sbrs	m_flags, TMRF_OVF
 		rjmp	_wait_post_pause
@@ -479,54 +481,54 @@ _wait_post_pause:
 process_key88:
 		cpi		tmp, KEY_NONE
 		breq	scan_done
-		
+
 		sbrs	tmp, 3
 		rjmp	_check_basic	; conventional codes
-		
+
 		; extended codes
 		push	tmp
 		send_paused
 		pop		tmp
-		
+
 		cpi		tmp, KEY_BACKSPACE
 		brsh	_check_insdels
-		
+
 		; F6-F10
 		subi	tmp, (KEY_F6 - KEY_F1)
 		push	tmp
-		
+
 		; send SHIFT on make, F1-F5 on break
 		sbrs	m_flags, KBDF_BREAK
 		ldi		tmp, KEY_SHIFT
 		send_paused
-		
+
 		; send F1-F5 on make, SHIFT on break
 		pop		tmp
 		sbrc	m_flags, KBDF_BREAK
 		ldi		tmp, KEY_SHIFT
 		rjmp	_send_last
-		
+
 _check_insdels:
 		cpi		tmp, KEY_HENKAN
 		brsh	_check_spaces
-		
+
 		cpi		tmp, KEY_INS
 		ldi		tmp, KEY_INSDEL
 		brne	_send_last
-		
+
 		; INS
 		ldi		tmp, KEY_SHIFT
 		send_paused
 
 		ldi		tmp, KEY_INSDEL
 		rjmp	_send_last
-		
+
 _check_spaces:
 		cpi		tmp, KEY_LRETURN
 		brsh	_check_returns
 		ldi		tmp, KEY_SPACE
 		rjmp	_send_last
-		
+
 _check_returns:
 		cpi		tmp, KEY_LSHIFT
 		brsh	_check_shifts
@@ -535,18 +537,18 @@ _check_returns:
 
 _check_shifts:
 		ldi		tmp, KEY_SHIFT
-		
+
 _send_last:
 		send_corrected
 _process_leave:
 		rjmp	scan_done
 
 _check_basic:
-		; check for sticky keys 
+		; check for sticky keys
 		ldi		tmph, (1 << KBDF_CAPS)
 		cpi		tmp, KEY_CAPS
 		breq	_update_switches
-		
+
 		ldi		tmph, (1 << KBDF_KANA)
 		cpi		tmp, KEY_KANA
 		breq	_update_switches
@@ -554,22 +556,22 @@ _check_basic:
 		ldi		tmph, (1 << KBDF_ZENKAKU)
 		cpi		tmp, KEY_ZENKAKU
 		brne	_send_last
-		
+
 _update_switches:
 		sbrc	m_flags, KBDF_BREAK
 		rjmp	scan_done
-		
+
 		cbr		tmp, 0x08
-		
+
 		; flip switch
 		eor		m_flags, tmph
 		and		tmph, m_flags
 		brne	_switch_send
 		sbr		tmp, 0x08
-		
+
 _switch_send:
 		rcall	key_event
-		
+
 		; send Set/Reset Status Indicators (ED) command
 		ldi		ps2_accum, 0xED
 		rcall	ps2_send_command
@@ -698,28 +700,28 @@ keymap_default:
 ;				8				9				A				B				C				D				E				F
 	.db		KEY_NONE,		KEY_F9,			KEY_NONE,		KEY_F5,			KEY_F3,			KEY_F1,			KEY_F2,			KEY_COPY		; 00
 	.db		KEY_NONE,		KEY_F10,		KEY_F8,			KEY_F6,			KEY_F4,			KEY_TAB,		KEY_AT,			KEY_NONE		; 08
-	
+
 	.db		KEY_NONE,		KEY_KANA,		KEY_LSHIFT,		KEY_NONE,		KEY_CTRL,		KEY_Q,			KEY_1,			KEY_NONE		; 10
 	.db		KEY_NONE,		KEY_NONE,		KEY_Z,			KEY_S,			KEY_A,			KEY_W,			KEY_2,			KEY_NONE		; 18
-	
+
 	.db		KEY_NONE,		KEY_C,			KEY_X,			KEY_D,			KEY_E,			KEY_4,			KEY_3,			KEY_NONE		; 20
 	.db		KEY_NONE,		KEY_SPACE,		KEY_V,			KEY_F,			KEY_T,			KEY_R,			KEY_5,			KEY_NONE		; 28
-	
+
 	.db		KEY_NONE,		KEY_N,			KEY_B,			KEY_H,			KEY_G,			KEY_Y,			KEY_6,			KEY_NONE		; 30
 	.db		KEY_NONE,		KEY_NONE,		KEY_M,			KEY_J,			KEY_U,			KEY_7,			KEY_8,			KEY_NONE		; 38
-	
+
 	.db		KEY_NONE,		KEY_COMMA,		KEY_K,			KEY_I,			KEY_O,			KEY_0,			KEY_9,			KEY_NONE		; 40
 	.db		KEY_NONE,		KEY_PERIOD,		KEY_SLASH,		KEY_L,			KEY_SEMICOLON,	KEY_P,			KEY_MINUS,		KEY_NONE		; 48
-	
+
 	.db		KEY_NONE,		KEY_NONE,		KEY_COLON,		KEY_NONE,		KEY_BRL,		KEY_TILDE,		KEY_NONE,		KEY_NONE		; 50
 	.db		KEY_CAPS,		KEY_RSHIFT,		KEY_LRETURN,	KEY_BRR,		KEY_NONE,		KEY_YEN,		KEY_NONE,		KEY_NONE		; 58
-	
+
 	.db		KEY_NONE,		KEY_NONE,		KEY_NONE,		KEY_NONE,		KEY_NONE,		KEY_NONE,		KEY_BACKSPACE,	KEY_NONE		; 60
 	.db		KEY_NONE,		KEY_KP_1,		KEY_NONE,		KEY_KP_4,		KEY_KP_7,		KEY_NONE,		KEY_NONE,		KEY_NONE		; 68
-	
+
 	.db		KEY_KP_0,		KEY_KP_PERIOD,	KEY_KP_2,		KEY_KP_5,		KEY_KP_6,		KEY_KP_8,		KEY_ESC,		KEY_KP_EQUAL	; 70
 	.db		KEY_STOP,		KEY_KP_PLUS,	KEY_KP_3,		KEY_KP_MINUS,	KEY_KP_MUL,		KEY_KP_9,		KEY_NONE,		KEY_NONE		; 78
-	
+
 	;.db		KEY_NONE,		KEY_NONE,		KEY_NONE,		KEY_F7,			KEY_NONE,		KEY_NONE,		KEY_NONE,		KEY_NONE		; 80
 
 keymap_e0:
