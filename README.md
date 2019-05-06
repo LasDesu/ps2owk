@@ -1,4 +1,9 @@
-# kbd88adp
-PS/2 to NEC PC-88 keyboard adapter.
+# ps2owk
+PS/2 to One-Wire-Keyboard adapter.
 
-Project page: http://zxdesu.byethost32.com/2018/02/13/pc-8801-keyboard-adapter/
+Adapter for various retro computer keyboards using only one wire for data transfer. One hardware - multiple firmware.
+Currently supported:
+- PC-8801MA (type C keyboard, I guess)
+- FM-77AV
+
+Orignal project page: http://zxdesu.byethost32.com/2018/02/13/pc-8801-keyboard-adapter/
