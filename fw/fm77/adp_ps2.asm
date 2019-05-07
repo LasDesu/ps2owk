@@ -1,32 +1,10 @@
-.ifdef DEVKIT
-
-.message "Compiling ATmega328P based development kit version"
-.include "m328Pdef.inc"
-
-.equ	sys_freq	= 8000000
-
-.equ	KBD_PORT	= PORTB
-.equ	KBD_DDR		= DDRB
-.equ	KBD_PIN		= PINB0
-
-.equ	PS_PORT		= PORTC
-.equ	PS_DDR		= DDRC
-.equ	PS_PINS		= PINC
-.equ	PS_Data		= PINC0
-.equ	PS_Clock	= PINC1
-
-.equ	LED_PORT	= PORTC
-.equ	LED_PIN		= PINC5
-
-.else
 
 .message "Compiling ATtiny13 based final device version"
 .include "tn13def.inc"
 
 .equ	sys_freq	= 9600000
 
-.equ	KBD_PORT	= PORTB
-.equ	KBD_DDR		= DDRB
+.equ	KBD_PORT	= DDRB
 .equ	KBD_PIN		= PINB3
 
 .equ	PS_PORT		= PORTB
@@ -38,7 +16,6 @@
 .equ	LED_PORT	= PORTB
 .equ	LED_PIN		= PINB4
 
-.endif
 
 .def	tmp		= r16
 .def	tmph	= r17
@@ -71,14 +48,14 @@
 .CSEG ; ROM
 	.org 0
 		rjmp	reset
-	
+
 	.org OC0Aaddr
 		rjmp	kbd_next
 
 ;	.org INT_VECTORS_SIZE
 reset:
 		cli
-		
+
 		; set stack
 	.ifdef SPH
 		ldi		tmp, high(RAMEND)
@@ -86,24 +63,13 @@ reset:
 	.endif
 		ldi		tmp, low(RAMEND)
 		out		SPL, tmp
-		
+
 		; set I/O
-	.ifdef DEVKIT
-		ldi		tmp, (0 << LED_PIN) | (0 << PS_Data) | (0 << PS_Clock)
-		out		PORTC, tmp
-		ldi		tmp, (1 << KBD_PIN)
+		ldi		tmp, (0 << KBD_PIN) | (0 << LED_PIN) | (0 << PS_Data) | (0 << PS_Clock)
 		out		PORTB, tmp
-		ldi		tmp, (1 << LED_PIN) | (0 << PS_Data) | (0 << PS_Clock)
-		out		DDRC, tmp
-		ldi		tmp, (1 << KBD_PIN)
+		ldi		tmp, (0 << KBD_PIN) | (1 << LED_PIN) | (0 << PS_Data) | (0 << PS_Clock)
 		out		DDRB, tmp
-	.else
-		ldi		tmp, (1 << KBD_PIN) | (0 << LED_PIN) | (0 << PS_Data) | (0 << PS_Clock)
-		out		PORTB, tmp
-		ldi		tmp, (1 << KBD_PIN) | (1 << LED_PIN) | (0 << PS_Data) | (0 << PS_Clock)
-		out		DDRB, tmp
-	.endif
-		
+
 		; setup keyboard timer period
 		ldi		tmp, kbd_div
 		out		OCR0A, tmp
@@ -120,7 +86,7 @@ reset:
 	.else
 		sts		TIMSK0, tmp
 	.endif
-		
+
 		; fill keyboard buffer
 		ldi		YH, high(kbd_buf + KBDBUF_SIZE)
 		ldi		YL, low(kbd_buf + KBDBUF_SIZE)
@@ -130,7 +96,7 @@ _prefill_buf:
 		st		-Y, tmp
 		dec		tmph
 		brne	_prefill_buf
-		
+
 		; set variables
 		clr		m_flags
 		clr		m_timer_l
@@ -147,29 +113,29 @@ _prefill_buf:
 ;		ldi		tmp, FMKEY_B
 ;		sts		immediate_scan, tmp
 		; debug
-		
+
 		rcall	reset_ps2
 
 main_loop:
 		sbi		LED_PORT, LED_PIN
-		
+
 packet_loop:
 		; wait for data and process it
 		;rcall	get_ps2_new
 		rcall	timeout_20ms
 		rcall	get_ps2
 		brcs	main_loop
-		
+
 		cbi		LED_PORT, LED_PIN
 		rcall	process_ps2
-		
+
 		; repeat
 		rjmp	packet_loop
-		
+
 kbd_next:
 		in		s_store, SREG
 		push	tmp
-		
+
 		; process timer
 		adiw	m_timer_l, 1
 		brne	_timer_noovf
@@ -193,27 +159,27 @@ _timer_noovf:
 		breq	_next_scan_code
 		dec		tmp
 		sts		scan_bit, tmp
-		
+
 		; next scancode bit
 		lds		tmp, kbd_scan
 		sec		; set one for stop bit
 		rol		tmp
 		sts		kbd_scan, tmp
-		
+
 		; set appropriate manchester code in buffer
-		ldi		tmp, 0x10 | 6	; zero
+		ldi		tmp, 0x10 | 9	; zero
 		brcc	_send_manch
-		ldi		tmp, 0x10 | 9	; one
-		
+		ldi		tmp, 0x10 | 6	; one
+
 _send_manch:
 		; update pin state
 		bst		tmp, 0
-		
+
 		; shift bits
 		clc
 		ror		tmp
 		sts		manch_code, tmp
-		
+
 		; set pin state
 		in		tmp, KBD_PORT
 		bld		tmp, KBD_PIN
@@ -222,54 +188,54 @@ _send_manch:
 _leave_kbd_proc:
 		pop		tmp
 		out		SREG, s_store
-		
+
 		reti
-		
+
 _tick_scan_timeout:
 		dec		tmp
 		sts		scan_timeout, tmp
 		breq	_set_start_bits
-		
+
 		rjmp	_leave_kbd_proc
-		
+
 _next_scan_code:
 		; check for data in immediate buffer
 		lds		tmp, immediate_scan
 		tst		tmp
 		brne	_set_new_scan
-		
+
 		; check for data in main buffer
 		rcall	buffer_get_keycode
 		brcc	_set_new_scan
-		
+
 		; no keycodes to send, remember that
 		clr		tmp
 		sts		manch_code, tmp
 		sts		scan_timeout, tmp
 
 		rjmp	_leave_kbd_proc
-		
+
 _set_new_scan:
 		sts		kbd_scan, tmp
 		ldi		tmp, 8+1	; 8 data bits + stop bit
 		sts		scan_bit, tmp
 		clr		tmp			; clear immediate buffer
 		sts		immediate_scan, tmp
-		
+
 		; send immediately if packet start
 		lds		tmp, manch_code
 		tst		tmp
 		breq	_set_start_bits
-		
+
 		; set ~20ms timeout
 		ldi		tmp, 21 * kbd_clk / 1000
 		sts		scan_timeout, tmp
-		
+
 		rjmp	_leave_kbd_proc
-		
+
 _set_start_bits:
 		; start bits
-		ldi		tmp, (0x25 | (1 << 6))
+		ldi		tmp, (0x1A | (1 << 6)) ; (0x25 | (1 << 6)) noninverted
 		rjmp	_send_manch
 
 
@@ -279,14 +245,14 @@ _set_start_bits:
 buffer_get_keycode:
 		push	tmph
 		push	tmp2
-		
+
 		ldi		tmph, key_index
 		ldi		tmp2, KBDBUF_SIZE
-		
+
 _get_check_next_entry:
 		cpi		tmph, KBDBUF_SIZE
 		brlo	_get_check_entry
-		
+
 		; jump to start of buffer if overflow
 		ldi		YH, high(kbd_buf)
 		ldi		YL, low(kbd_buf)
@@ -297,10 +263,10 @@ _get_check_entry:
 		inc		tmph
 		tst		tmp
 		brne	_get_process_scancode
-		
+
 		dec		tmp2
 		brne	_get_check_next_entry
-		
+
 		; no scan codes found
 		pop		tmp2
 		pop		tmph
@@ -311,20 +277,20 @@ _get_process_scancode:
 		; just return if make code
 		sbrs	tmp, 7
 		rjmp	_save_new_index
-		
+
 		; clear break code
 		sbiw	r28, 1	; Y = r28,r29
 		clr		tmp2
 		st		Y+, tmp2
-		
+
 _save_new_index:
 		sts		key_index, tmph
-		
+
 		pop		tmp2
 		pop		tmph
 		clc
 		ret
-		
+
 ; for receiver
 store_keycode:
 		mov		m_tmp, tmp	; store original code
@@ -333,9 +299,9 @@ store_keycode:
 		ldi		ZH, high(kbd_buf)
 		ldi		ZL, low(kbd_buf)
 		ldi		tmp2, KBDBUF_SIZE
-		
+
 		andi	tmp, 0x7F	; mask make/break
-	
+
 _store_next_scan:
 		ld		tmph, Z+
 		andi	tmph, 0x7F
@@ -346,23 +312,23 @@ _store_next_scan:
 _store_iterate_scan:
 		dec		tmp2
 		brne	_store_next_scan
-		
+
 		tst		m_tmp2
 		breq	_store_no_space
-		
+
 		ldi		ZH, high(kbd_buf + KBDBUF_SIZE)
 		ldi		ZL, low(kbd_buf + KBDBUF_SIZE)
 		sub		ZL, m_tmp2
 		sbci	ZH, 0
 		st		Z, m_tmp
-		
+
 _store_no_space:
 		ret
-		
+
 _store_mark_free_slot:
 		mov		m_tmp2, tmp2
 		rjmp	_store_iterate_scan
-		
+
 _store_put_keycode:
 		st		-Z, m_tmp
 		ret
@@ -442,7 +408,7 @@ timeout_40ms:
 		ldi		tmp, low(timer_ovf_40ms)
 		ldi		tmph, high(timer_ovf_40ms)
 		rjmp	set_timer
-		
+
 timeout_max:
 		clr		tmp
 		clr		tmph
@@ -465,17 +431,17 @@ process_ps2:
 
 		cpi		ps2_accum, 0xE0
 		breq	scan_ext
-		
+
 		sbrs	m_flags, KBDF_EXT
 		rjmp	_scan_no_pref
-		
+
 		cpi		ps2_accum, 0x68
 		brsh	_scan_pref_off68
-		
+
 		cpi		ps2_accum, 0x14	; right Ctrl
 		ldi		tmp, FMKEY_KANA
 		breq	set_keycode
-		
+
 _scan_no_pref:
 		cpi		ps2_accum, 0x88
 		brsh	scan_done
@@ -488,7 +454,7 @@ _scan_no_pref:
 _scan_pref_off68:
 		cpi		ps2_accum, 0x68
 		brlo	_load_map_e0
-		
+
 		cpi		ps2_accum, 0x80
 		brsh	scan_done
 
@@ -497,7 +463,7 @@ _load_map_e0:
 		ldi		ZH, high(keymap_e0_off68 << 1)
 		ldi		ZL, low(keymap_e0_off68 << 1)
 		rjmp	get_keycode
-		
+
 scan_ext:
 		; mark next scancode as extended
 		ldi		tmp, (1 << KBDF_EXT)
@@ -509,19 +475,19 @@ scan_break:
 		ldi		tmp, (1 << KBDF_BREAK)
 		or		m_flags, tmp
 		ret
-		
+
 get_keycode:
 		; get keycode from keymap
 		add		ZL, ps2_accum
 		clr		tmp
 		adc		ZH, tmp
 		lpm		tmp, Z
-		
+
 set_keycode:
 		; update break flag
 		bst		m_flags, KBDF_BREAK
 		bld		tmp, 7
-		
+
 		;sts		immediate_scan, tmp
 		rcall		store_keycode
 
